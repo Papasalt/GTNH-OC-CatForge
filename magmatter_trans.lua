@@ -1,0 +1,407 @@
+
+-- Credits -- __cats_____ (cat.) - MAGMATTER
+
+local component = require("component")
+local sides = require("sides")
+local computer = require("computer")
+
+-- USER CONFIG
+
+local plasmaTransposerAddress = "38827953-18b5-4b56-94a2-eb6e524c0f83"
+local bufferTransposerAddress = "607886de-1bce-4584-ac13-c5ef68a4e4c9"
+
+local plasmaInterfaceSide = sides.north
+local replenisherSides = {sides.east, sides.south}
+
+local bufferIOSide = sides.north
+local activitySide = sides.top
+
+local tachyonFluidIdentifier = "temporalfluid"
+local spatialFluidIdentifier = "spatialfluid"
+
+local expectedMagmatterPatternCount = 14
+local expectedFluidCount = 16
+local slotsPerReplenisher = 9
+local interfaceSlots = 36
+local plasmaInsertionAmount = 144
+local expectedRequestCount = 3
+
+local trackFluidProduction = true
+local fluidProducedPerCycle = 925632 -- Set to the observed output in litres.
+local productionRateReportInterval = 10 -- Report average production every 10 completed cycles.
+
+local eventDebounce = 0.15
+local redstoneCheckInterval = 0.20
+
+-- HARDWARE
+
+local Hardware = {
+	bufferController = nil,
+	bufferTransposer = nil,
+	plasmaTransposer = nil,
+	plasmaInterface = nil,
+	redstone = nil
+}
+
+-- LOOKUP TABLES
+
+local fluidSlots = {}
+local sourceToPlasma = {}
+local tachyonSlot = nil
+local spatialSlot = nil
+
+-- LITRE FORMATTING
+
+local function formatLitres(litres)
+	if litres >= 1000000000 then
+		return string.format("%.3f billion L", litres / 1000000000)
+	elseif litres >= 1000000 then
+		return string.format("%.2f million L", litres / 1000000)
+	else
+		return string.format("%.0f L", litres)
+	end
+end
+
+-- HARDWARE DISCOVERY AND VERIFICATION
+
+local function discoverHardware()
+	for address in component.list("me_controller") do
+		Hardware.bufferController = component.proxy(address)
+		break
+	end
+
+	for address in component.list("fluid_interface") do
+		Hardware.plasmaInterface = component.proxy(address)
+		break
+	end
+
+	for address in component.list("transposer") do
+		if address == plasmaTransposerAddress then
+			Hardware.plasmaTransposer = component.proxy(address)
+		elseif address == bufferTransposerAddress then
+			Hardware.bufferTransposer = component.proxy(address)
+		end
+	end
+
+	local redstoneCount = 0
+	for address in component.list("redstone") do
+		Hardware.redstone = component.proxy(address)
+		redstoneCount = redstoneCount + 1
+	end
+
+	if redstoneCount ~= 1 then error("Expected exactly one redstone component, found " .. redstoneCount) end
+end
+
+local function verifyHardware()
+	if Hardware.bufferController == nil then error("ME controller not found.") end
+	if Hardware.plasmaInterface == nil then error("Fluid interface not found.") end
+	if Hardware.plasmaTransposer == nil then error("Plasma transposer not found: " .. plasmaTransposerAddress) end
+	if Hardware.bufferTransposer == nil then error("Buffer transposer not found: " .. bufferTransposerAddress) end
+	if Hardware.redstone == nil then error("Redstone component not found.") end
+	if plasmaInterfaceSide == nil then error("Missing plasmaInterfaceSide configuration.") end
+	if activitySide == nil then error("Missing activitySide configuration.") end
+	if #replenisherSides == 0 then error("No replenisher sides configured.") end
+	if tachyonFluidIdentifier == spatialFluidIdentifier then error("Tachyon and spatial fluid identifiers cannot be identical.") end
+	if trackFluidProduction and fluidProducedPerCycle <= 0 then error("Set fluidProducedPerCycle before enabling production tracking.") end
+	if Hardware.redstone.getInput(activitySide) == 0 then error("Exoticizer is not idle. Check activitySide configuration.") end
+  if productionRateReportInterval < 1 or productionRateReportInterval % 1 ~= 0 then error("productionRateReportInterval must be a positive integer.") end
+end
+
+-- FLUID SLOT DISCOVERY
+
+local function discoverFluidSlots()
+	local found = 0
+
+	for _, side in ipairs(replenisherSides) do
+		for slot = 1, slotsPerReplenisher do
+			local fluid = Hardware.plasmaTransposer.getFluidInTank(side, slot)
+
+			if fluid and fluid.amount > 0 then
+				local label = fluid.label or fluid.name
+				if label == nil then error("Fluid found in replenisher without a label or name.") end
+				if fluidSlots[label] ~= nil then error("Duplicate fluid found in replenisher: " .. label) end
+
+				local source = {side = side, slot = slot - 1}
+				fluidSlots[label] = source
+				found = found + 1
+
+				if fluid.name == tachyonFluidIdentifier or fluid.label == tachyonFluidIdentifier then
+					if tachyonSlot ~= nil then error("Duplicate tachyon fluid found.") end
+					tachyonSlot = source
+				end
+
+				if fluid.name == spatialFluidIdentifier or fluid.label == spatialFluidIdentifier then
+					if spatialSlot ~= nil then error("Duplicate spatial fluid found.") end
+					spatialSlot = source
+				end
+			end
+		end
+	end
+
+	return found
+end
+
+-- REFERENCE INTERFACE MAPPING DISCOVERY
+
+local function getInterfaceMappings(interface)
+	local mappings = {}
+	local count = 0
+
+	for slot = 1, interfaceSlots do
+		local pattern = ({interface.getInterfacePattern(slot)})[1]
+
+		if pattern ~= nil then
+			local input = pattern.inputs and pattern.inputs[1]
+			local output = pattern.outputs and pattern.outputs[1]
+
+			if input ~= nil and output ~= nil then
+				local dustLabel = input.label
+				local plasmaLabel = output.label
+
+				if dustLabel ~= nil and plasmaLabel ~= nil then
+					local dustMaterial = dustLabel:match("^(%S+)")
+					local plasmaMaterial = plasmaLabel:match("^(%S+)")
+
+					if dustLabel:match(" Dust$") and plasmaLabel:match(" Plasma$") and dustMaterial == plasmaMaterial then
+						if mappings[dustLabel] ~= nil then error("Duplicate dust mapping found: " .. dustLabel) end
+
+						for _, existingPlasma in pairs(mappings) do
+							if existingPlasma == plasmaLabel then error("Duplicate plasma mapping found: " .. plasmaLabel) end
+						end
+
+						mappings[dustLabel] = plasmaLabel
+						count = count + 1
+					end
+				end
+			end
+		end
+	end
+
+	return mappings, count
+end
+
+local function discoverSourceMappings()
+	local mappings, count = getInterfaceMappings(Hardware.plasmaInterface)
+	if count ~= expectedMagmatterPatternCount then error("Expected " .. expectedMagmatterPatternCount .. " Magmatter mappings, found " .. count) end
+	sourceToPlasma = mappings
+	return count
+end
+
+local function verifyLookups()
+	local mappingCount = 0
+
+	for dustLabel, plasmaLabel in pairs(sourceToPlasma) do
+		mappingCount = mappingCount + 1
+		if fluidSlots[plasmaLabel] == nil then error("No replenisher slot found for plasma '" .. plasmaLabel .. "' (source: " .. dustLabel .. ")") end
+	end
+
+	if mappingCount ~= expectedMagmatterPatternCount then error("Incorrect number of Magmatter mappings discovered.") end
+	if tachyonSlot == nil then error("Tachyon fluid not found in replenisher slots.") end
+	if spatialSlot == nil then error("Spatial fluid not found in replenisher slots.") end
+end
+
+-- OUTPUT BUFFER
+
+local function clearBufferSubnet()
+	local success1 = Hardware.bufferTransposer.transferItem(bufferIOSide, bufferIOSide, 1, 7, 1) > 0
+	local success2 = Hardware.bufferTransposer.transferItem(bufferIOSide, bufferIOSide, 1, 8, 2) > 0
+	return success1 and success2
+end
+
+local function readRequests()
+	local requests = {tachyon = nil, spatial = nil, dust = nil}
+	local fluids = Hardware.bufferController.getFluidsInNetwork()
+	local items = Hardware.bufferController.getItemsInNetwork()
+
+	if #fluids ~= 2 or #items ~= 1 then return nil end
+
+	for _, fluid in ipairs(fluids) do
+		if fluid.name == tachyonFluidIdentifier or fluid.label == tachyonFluidIdentifier then
+			if requests.tachyon ~= nil then error("Duplicate tachyon fluid in output buffer.") end
+			requests.tachyon = fluid.size
+		elseif fluid.name == spatialFluidIdentifier or fluid.label == spatialFluidIdentifier then
+			if requests.spatial ~= nil then error("Duplicate spatial fluid in output buffer.") end
+			requests.spatial = fluid.size
+		else
+			error("Unexpected fluid in Exoticizer buffer: " .. tostring(fluid.label))
+		end
+	end
+
+	requests.dust = items[1].label
+
+	if requests.tachyon == nil or requests.spatial == nil then error("Missing tachyon or spatial fluid in output buffer.") end
+	if requests.dust == nil then error("Magmatter dust output has no label.") end
+	if requests.tachyon < 1 or requests.tachyon > 50 then error("Invalid tachyon amount: " .. tostring(requests.tachyon) .. " L") end
+	if requests.spatial < 51 or requests.spatial > 100 then error("Invalid spatial amount: " .. tostring(requests.spatial) .. " L") end
+
+	requests.plasmaUnits = requests.spatial - requests.tachyon
+	requests.plasmaAmount = requests.plasmaUnits * plasmaInsertionAmount
+
+	if requests.plasmaAmount <= 0 then error("Calculated plasma amount is invalid: " .. tostring(requests.plasmaAmount)) end
+
+	return requests
+end
+
+-- FLUID TRANSFER
+
+local function transferFluid(source, amount, label)
+	if source == nil then error("Missing replenisher source for " .. tostring(label)) end
+
+	local transferred = Hardware.plasmaTransposer.transferFluid(source.side, plasmaInterfaceSide, amount, source.slot)
+
+	if transferred == false or transferred == nil or transferred == 0 then error("Fluid transfer failed for " .. tostring(label)) end
+	if type(transferred) == "number" and transferred < amount then error("Partial transfer for " .. tostring(label) .. ": " .. transferred .. "/" .. amount .. " L") end
+
+	return transferred
+end
+
+local function transferMagmatterInputs(requests)
+	local plasmaLabel = sourceToPlasma[requests.dust]
+	if plasmaLabel == nil then error("No plasma mapping exists for dust: " .. tostring(requests.dust)) end
+
+	local plasmaSource = fluidSlots[plasmaLabel]
+	if plasmaSource == nil then error("Plasma not found in replenisher lookup: " .. plasmaLabel) end
+
+	transferFluid(tachyonSlot, requests.tachyon, "Tachyon")
+	transferFluid(spatialSlot, requests.spatial, "Spatial")
+	transferFluid(plasmaSource, requests.plasmaAmount, plasmaLabel)
+
+	return plasmaLabel
+end
+
+-- CYCLE CONTROL
+
+local processing = false
+local bufferChangePending = false
+local awaitingNextCycle = false
+local sawExoticizerActive = false
+local cycleCount = 0
+local totalFluidProduced = 0
+local productionTrackingStarted = nil
+
+local function isExoticizerIdle()
+	return Hardware.redstone.getInput(activitySide) ~= 0
+end
+
+local function processCycle()
+	if processing or not isExoticizerIdle() then return end
+
+	local cycleStarted = computer.uptime()
+	local requests = readRequests()
+	if requests == nil then return end
+
+	processing = true
+	bufferChangePending = false
+
+	if not clearBufferSubnet() then
+		processing = false
+		error("Failed to clear Exoticizer output buffer.")
+	end
+
+	transferMagmatterInputs(requests)
+
+	awaitingNextCycle = true
+	sawExoticizerActive = false
+	processing = false
+	cycleCount = cycleCount + 1
+
+	local totalTime = computer.uptime() - cycleStarted
+
+  if trackFluidProduction then
+    totalFluidProduced = totalFluidProduced + fluidProducedPerCycle
+
+    print(string.format("[MAGMATTER] Cycle %d completed in %.3fs | Total produced: %s", cycleCount, totalTime, formatLitres(totalFluidProduced)))
+
+    if cycleCount % productionRateReportInterval == 0 then
+      local elapsed = computer.uptime() - productionTrackingStarted
+      local ratePerSecond = totalFluidProduced / elapsed
+
+      print(string.format("[MAGMATTER] Average production: %s/s | %s/min | %s/h",
+        formatLitres(ratePerSecond),
+        formatLitres(ratePerSecond * 60),
+        formatLitres(ratePerSecond * 3600)
+      ))
+    end
+  else
+    print(string.format("[MAGMATTER] Cycle %d completed in %.3fs", cycleCount, totalTime))
+  end
+end
+
+-- EVENT HANDLING
+
+local function isBufferChangeEvent(signalName)
+	return signalName == "network_fluid_changed" or signalName == "network_item_changed"
+end
+
+-- STARTUP
+
+local function startup()
+	print("[MAGMATTER] Initialising transposer controller...")
+
+	discoverHardware()
+	verifyHardware()
+
+	print("[MAGMATTER] Hardware verified.")
+
+	local scanStarted = computer.uptime()
+	local fluidCount = discoverFluidSlots()
+	local scanTime = computer.uptime() - scanStarted
+
+	if fluidCount ~= expectedFluidCount then error("Expected " .. expectedFluidCount .. " stocked fluids, found " .. fluidCount) end
+
+	local mappingCount = discoverSourceMappings()
+	verifyLookups()
+
+	Hardware.bufferController.setFluidEventSubscription(true)
+	Hardware.bufferController.setItemEventSubscription(true)
+
+  if trackFluidProduction then productionTrackingStarted = computer.uptime() end
+
+	local fluids = Hardware.bufferController.getFluidsInNetwork()
+	local items = Hardware.bufferController.getItemsInNetwork()
+
+	if #fluids + #items == expectedRequestCount then bufferChangePending = true end
+
+	print(string.format("[MAGMATTER] Ready | %d fluids indexed in %.3fs | %d plasma mappings loaded", fluidCount, scanTime, mappingCount))
+	if trackFluidProduction then print(string.format("[MAGMATTER] Production tracking enabled | %.0f L per cycle", fluidProducedPerCycle)) end
+	print("[MAGMATTER] Waiting for Exoticizer output.")
+end
+
+-- MAIN LOOP
+
+local function main()
+	local lastRedstoneCheck = 0
+
+	while true do
+		local signalName = computer.pullSignal(redstoneCheckInterval)
+
+		if isBufferChangeEvent(signalName) then
+			bufferChangePending = true
+			local deadline = computer.uptime() + eventDebounce
+
+			while computer.uptime() < deadline do
+				local remaining = deadline - computer.uptime()
+				local nextSignal = computer.pullSignal(remaining)
+				if isBufferChangeEvent(nextSignal) then deadline = computer.uptime() + eventDebounce end
+			end
+		end
+
+		local now = computer.uptime()
+
+		if now - lastRedstoneCheck >= redstoneCheckInterval then
+			lastRedstoneCheck = now
+
+			if awaitingNextCycle and not isExoticizerIdle() then sawExoticizerActive = true end
+
+			if awaitingNextCycle and sawExoticizerActive and isExoticizerIdle() then
+				awaitingNextCycle = false
+				bufferChangePending = true
+			end
+		end
+
+		if bufferChangePending and not awaitingNextCycle and isExoticizerIdle() then processCycle() end
+	end
+end
+
+startup()
+main()
