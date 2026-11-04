@@ -4,10 +4,12 @@ local component = require("component")
 local sides = require("sides")
 local computer = require("computer")
 
--- USER CONFIG
+-- USER CONFIG - This section MUST be edited to match your specific arrangement and orientation
+-- Use an Analyzer on the component to print its address in chat. Click the address to copy it to your clipboard.
+-- Available sides: sides.north, sides.east, sides.south, sides.west, sides.top, sides.bottom
 
-local plasmaTransposerAddress = "SSR_TRANSPOSER_ADDRESS"
-local bufferTransposerAddress = "IO_PORT_TRANSPOSER_ADDRESS"
+local plasmaTransposerAddress = "SSR_TRANSPOSER_ADDRESS" -- Replace with the address of the transposer adjacent to the SSR. A single transposer must be use for this.
+local bufferTransposerAddress = "IO_PORT_TRANSPOSER_ADDRESS" -- Replace with the address of the transposer adjacent to the output subnet ME IO Port.
 
 local plasmaInterfaceSide = EDIT_ME -- Replace with the side that the ME Dual Interface is on relative to the Transposer
 local replenisherSides = {SIDE_1, SIDE_2} -- Replace with the side that the SSRs are on relative to transposer. Example: replenisherSides = {sides.east, sides.south}
@@ -15,13 +17,13 @@ local replenisherSides = {SIDE_1, SIDE_2} -- Replace with the side that the SSRs
 local bufferIOSide = EDIT_ME -- Side of the bufferTransposer that the ME IO port is on
 local activitySide = EDIT_ME -- Side of the Redstone I/O that receives the activity detector cover signal
 
-local trackFluidProduction = false
+local trackFluidProduction = false -- Enable this to track total and average rate of Quark Gluon Plasma.
 local fluidProducedPerCycle = 0 -- Set this to the observed output in litres. This value can be seen in the controller while mid-recipe.
 local productionRateReportInterval = 10 -- Report average production every 10 completed cycles.
 
 local verifyFluidListEnabled = true -- Recommended to keep enabled for ease of debugging. Verifies that the SSRs contain exactly the expected fluids
 
--- SYSTEM CONFIG
+-- SYSTEM CONFIG - Recommended to keep as is unless you know what you're doing
 
 local expectedPlasmaMappingCount = 14
 local expectedFluidCount = 16
@@ -32,6 +34,7 @@ local expectedRequestCount = 3
 local tachyonFluidIdentifier = "temporalfluid"
 local spatialFluidIdentifier = "spatialfluid"
 
+-- Altering these values may cause inconsistencies and unexpected issues during runtime
 local eventDebounce = 0.10
 local redstoneCheckInterval = 0.05
 
