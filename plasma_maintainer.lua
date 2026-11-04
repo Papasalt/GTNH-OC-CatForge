@@ -3,17 +3,17 @@
 local component = require("component")
 local term = require("term")
 
--- User config--
+-- User config
 
-local checkInterval = 60
-local minimumStock = 100000000
-local expectedPatternCount = 94
-local maxRequestCount = 16
-local retryInterval = 5
+local checkInterval = 60 -- How often, in seconds, the script reads the network to check if any plasmas are below the set threshold
+local minimumStock = 100000000 -- If the stored plasma is below this value, AE2 will trigger a craft of batch size 1 to attempt to raise it above the threshold
+local maxRequestCount = 16 -- Set this to the number of crafting CPUs available or lower.
+local retryInterval = 5 -- Number of network checks before reattempting a previously failed plasma craft
+local ignorePatternCountCheck = false -- If this is true, then you risk running out of/not having any of any plasma that has missing patterns
 
--- End user config --
+-- End user config
 
--- Declarations --
+-- Declarations
 
 local meController = component.me_controller
 
@@ -50,8 +50,8 @@ local function initialisePlasmaCraftables()
 		end
 	end
 
-	if patternCount ~= expectedPatternCount then
-		error("Unexpected number of patterns discovered. Expected " .. expectedPatternCount .. " unique plasma patterns.")
+	if not ignorePatternCountCheck and not (patternCount == 80 or patternCount == 94) then
+		error("Unexpected number of patterns discovered. There must be exactly 80 (QGP) or 94 (QGP+Magmatter) patterns. Ensure you do not have duplicates or are missing any.")
 	end
 end
 
@@ -141,7 +141,7 @@ local function printSummary()
 	term.setCursor(1, 1)
 
 	print("========== PLASMA MAINTAINER ==========")
-	print("Patterns: " .. total .. "/" .. expectedPatternCount)
+	print("Patterns: " .. total)
 	print("Healthy: " .. healthy .. " | Understocked: " .. understocked)
 	print("Active: " .. active .. "/" .. maxRequestCount .. " | Failed: " .. failed)
   print("Iteration count: " .. loopCount)
