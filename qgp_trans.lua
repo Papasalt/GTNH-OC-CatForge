@@ -4,13 +4,13 @@ local component = require("component")
 local sides = require("sides")
 local computer = require("computer")
 
--- USER CONFIG
-
--- This MUST be configured to match your specific SSR arrangement
+-- USER CONFIG - This section MUST be edited to match your specific arrangement and orientation
+-- Use an Analyzer on the component to print its address in chat. Click the address to copy it to your clipboard.
 -- Available sides: sides.north, sides.east, sides.south, sides.west, sides.top, sides.bottom
+
 local transposerConfig = { 
 	{
-		address = "SSR_TRANSPOSER_ADDRESS_1",
+		address = "SSR_TRANSPOSER_ADDRESS_1", -- 
 		interfaceSide = EDIT_ME,
 		replenisherSides = {SIDE_1, SIDE_2, SIDE_3} -- Example configuration replenisherSides {sides.top, sides.west, sides.south}
 	},
@@ -31,7 +31,7 @@ local bufferTransposerAddress = "IO_PORT_TRANSPOSER" -- Address of the transpose
 local bufferIOSide = EDIT_ME -- Side of the bufferTransposer that the ME IO port is on
 local activitySide = EDIT_ME -- Side of the Redstone I/O that receives the activity detector cover signal
 
-local trackFluidProduction = false
+local trackFluidProduction = false -- Enable this to track total and average rate of Magmatter.
 local fluidProducedPerCycle = 0 -- Set this to the observed output in litres. This value can be seen in the controller while mid-recipe.
 local productionRateReportInterval = 10 -- Report average production every 10 completed cycles.
 
@@ -39,10 +39,12 @@ local verifyFluidListEnabled = true -- Recommended to keep enabled for ease of d
 
 -- SYSTEM CONFIG - Recommended to keep as is unless you know what you're doing
 
+-- DO NOT CHANGE
 local expectedPlasmaMappingCount = 80
 local slotsPerReplenisher = 9
 local expectedRequestCount = 7
 
+-- Altering these values may cause inconsistencies and unexpected issues during runtime
 local eventDebounce = 0.15
 local redstoneCheckInterval = 0.20
 
