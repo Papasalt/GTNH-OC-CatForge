@@ -1,4 +1,3 @@
-
 -- Credits -- __cats_____ (cat.) - MAGMATTER
 
 local component = require("component")
@@ -7,39 +6,42 @@ local computer = require("computer")
 
 -- USER CONFIG
 
-local plasmaTransposerAddress = "38827953-18b5-4b56-94a2-eb6e524c0f83"
-local bufferTransposerAddress = "607886de-1bce-4584-ac13-c5ef68a4e4c9"
+local plasmaTransposerAddress = "SSR_TRANSPOSER_ADDRESS"
+local bufferTransposerAddress = "IO_PORT_TRANSPOSER_ADDRESS"
 
-local plasmaInterfaceSide = sides.north
-local replenisherSides = {sides.east, sides.south}
+local plasmaInterfaceSide = EDIT_ME -- Replace with the side that the ME Dual Interface is on relative to the Transposer
+local replenisherSides = {SIDE_1, SIDE_2} -- Replace with the side that the SSRs are on relative to transposer. Example: replenisherSides = {sides.east, sides.south}
 
-local bufferIOSide = sides.north
-local activitySide = sides.top
+local bufferIOSide = EDIT_ME -- Side of the bufferTransposer that the ME IO port is on
+local activitySide = EDIT_ME -- Side of the Redstone I/O that receives the activity detector cover signal
+
+local trackFluidProduction = false
+local fluidProducedPerCycle = 0 -- Set this to the observed output in litres. This value can be seen in the controller while mid-recipe.
+local productionRateReportInterval = 10 -- Report average production every 10 completed cycles.
+
+local verifyFluidListEnabled = true -- Recommended to keep enabled for ease of debugging. Verifies that the SSRs contain exactly the expected fluids
+
+-- SYSTEM CONFIG
+
+local expectedPlasmaMappingCount = 14
+local expectedFluidCount = 16
+local slotsPerReplenisher = 9
+local plasmaInsertionAmount = 144
+local expectedRequestCount = 3
 
 local tachyonFluidIdentifier = "temporalfluid"
 local spatialFluidIdentifier = "spatialfluid"
 
-local expectedMagmatterPatternCount = 14
-local expectedFluidCount = 16
-local slotsPerReplenisher = 9
-local interfaceSlots = 36
-local plasmaInsertionAmount = 144
-local expectedRequestCount = 3
+local eventDebounce = 0.10
+local redstoneCheckInterval = 0.05
 
-local trackFluidProduction = true
-local fluidProducedPerCycle = 925632 -- Set to the observed output in litres.
-local productionRateReportInterval = 10 -- Report average production every 10 completed cycles.
-
-local eventDebounce = 0.15
-local redstoneCheckInterval = 0.20
+local verificationExportMode = false -- Used for exporting all SSR fluids to a text file for debugging and sharing
 
 -- HARDWARE
 
 local Hardware = {
 	bufferController = nil,
 	bufferTransposer = nil,
-	plasmaTransposer = nil,
-	plasmaInterface = nil,
 	redstone = nil
 }
 
@@ -62,16 +64,25 @@ local function formatLitres(litres)
 	end
 end
 
+-- PLASMA LIST EXPORT
+
+local function exportFluidList(filename)
+  local file = io.open(filename, "w")
+  local count = 0
+  for plasmaLabel, details in pairs(fluidSlots) do
+    file:write(plasmaLabel, "\n")
+    count = count + 1
+  end
+  file:close()
+  print("Number of plasmas exported: " .. tostring(count))
+  print("Filename: " .. filename)
+end
+
 -- HARDWARE DISCOVERY AND VERIFICATION
 
 local function discoverHardware()
 	for address in component.list("me_controller") do
 		Hardware.bufferController = component.proxy(address)
-		break
-	end
-
-	for address in component.list("fluid_interface") do
-		Hardware.plasmaInterface = component.proxy(address)
 		break
 	end
 
@@ -92,9 +103,72 @@ local function discoverHardware()
 	if redstoneCount ~= 1 then error("Expected exactly one redstone component, found " .. redstoneCount) end
 end
 
+local function verifyFluidList()
+	local filename = "expected_fluid_list.txt"
+	local file, reason = io.open(filename, "r")
+
+	if file == nil then
+		error("Fluid verification is enabled, but the expected fluid list could not be opened: " ..
+			filename .. "\n" .. tostring(reason) ..
+			"\nEnsure you have downloaded the expected fluid list from the GTNH-OC-CatForge GitHub repository.")
+	end
+
+	local expectedFluids = {}
+	local missingFluids = {}
+	local unexpectedFluids = {}
+	local expectedCount = 0
+
+	for fluidLabel in file:lines() do
+		if fluidLabel ~= "" and fluidLabel:sub(1, 1) ~= "#" then
+			if expectedFluids[fluidLabel] then
+				file:close()
+				error("Duplicate fluid entry in " .. filename .. ": " .. fluidLabel)
+			end
+
+			expectedFluids[fluidLabel] = true
+			expectedCount = expectedCount + 1
+
+			if not fluidSlots[fluidLabel] then
+				table.insert(missingFluids, fluidLabel)
+			end
+		end
+	end
+
+	file:close()
+
+	for fluidLabel in pairs(fluidSlots) do
+		if not expectedFluids[fluidLabel] then
+			table.insert(unexpectedFluids, fluidLabel)
+		end
+	end
+
+	if #missingFluids > 0 or #unexpectedFluids > 0 then
+		local message = {"Fluid verification failed!"}
+
+		if #missingFluids > 0 then
+			table.sort(missingFluids)
+			table.insert(message, "\nMissing fluids (" .. #missingFluids .. "):")
+			for _, label in ipairs(missingFluids) do
+				table.insert(message, "  - " .. label)
+			end
+		end
+
+		if #unexpectedFluids > 0 then
+			table.sort(unexpectedFluids)
+			table.insert(message, "\nUnexpected fluids (" .. #unexpectedFluids .. "):")
+			for _, label in ipairs(unexpectedFluids) do
+				table.insert(message, "  - " .. label)
+			end
+		end
+
+		error(table.concat(message, "\n"))
+	end
+
+	print("Fluid verification successful: " .. expectedCount .. " fluids verified.")
+end
+
 local function verifyHardware()
 	if Hardware.bufferController == nil then error("ME controller not found.") end
-	if Hardware.plasmaInterface == nil then error("Fluid interface not found.") end
 	if Hardware.plasmaTransposer == nil then error("Plasma transposer not found: " .. plasmaTransposerAddress) end
 	if Hardware.bufferTransposer == nil then error("Buffer transposer not found: " .. bufferTransposerAddress) end
 	if Hardware.redstone == nil then error("Redstone component not found.") end
@@ -137,67 +211,35 @@ local function discoverFluidSlots()
 			end
 		end
 	end
-
+  
 	return found
 end
 
--- REFERENCE INTERFACE MAPPING DISCOVERY
+-- PLASMA MAPPING DISCOVERY
 
-local function getInterfaceMappings(interface)
-	local mappings = {}
-	local count = 0
+local function discoverSourceMappings()
+	local mappingCount = 0
 
-	for slot = 1, interfaceSlots do
-		local pattern = ({interface.getInterfacePattern(slot)})[1]
+	for plasmaLabel in pairs(fluidSlots) do
+		local material = plasmaLabel:match("^(.-) Plasma$")
 
-		if pattern ~= nil then
-			local input = pattern.inputs and pattern.inputs[1]
-			local output = pattern.outputs and pattern.outputs[1]
+		if material ~= nil then
+			local dustLabel = material .. " Dust"
 
-			if input ~= nil and output ~= nil then
-				local dustLabel = input.label
-				local plasmaLabel = output.label
-
-				if dustLabel ~= nil and plasmaLabel ~= nil then
-					local dustMaterial = dustLabel:match("^(%S+)")
-					local plasmaMaterial = plasmaLabel:match("^(%S+)")
-
-					if dustLabel:match(" Dust$") and plasmaLabel:match(" Plasma$") and dustMaterial == plasmaMaterial then
-						if mappings[dustLabel] ~= nil then error("Duplicate dust mapping found: " .. dustLabel) end
-
-						for _, existingPlasma in pairs(mappings) do
-							if existingPlasma == plasmaLabel then error("Duplicate plasma mapping found: " .. plasmaLabel) end
-						end
-
-						mappings[dustLabel] = plasmaLabel
-						count = count + 1
-					end
-				end
+			if sourceToPlasma[dustLabel] ~= nil then
+				error("Duplicate dust mapping found: " .. dustLabel)
 			end
+
+			sourceToPlasma[dustLabel] = plasmaLabel
+			mappingCount = mappingCount + 1
 		end
 	end
 
-	return mappings, count
-end
-
-local function discoverSourceMappings()
-	local mappings, count = getInterfaceMappings(Hardware.plasmaInterface)
-	if count ~= expectedMagmatterPatternCount then error("Expected " .. expectedMagmatterPatternCount .. " Magmatter mappings, found " .. count) end
-	sourceToPlasma = mappings
-	return count
-end
-
-local function verifyLookups()
-	local mappingCount = 0
-
-	for dustLabel, plasmaLabel in pairs(sourceToPlasma) do
-		mappingCount = mappingCount + 1
-		if fluidSlots[plasmaLabel] == nil then error("No replenisher slot found for plasma '" .. plasmaLabel .. "' (source: " .. dustLabel .. ")") end
+	if mappingCount ~= expectedPlasmaMappingCount then
+		error("Expected " .. expectedPlasmaMappingCount .. " plasma mappings, found " .. mappingCount)
 	end
 
-	if mappingCount ~= expectedMagmatterPatternCount then error("Incorrect number of Magmatter mappings discovered.") end
-	if tachyonSlot == nil then error("Tachyon fluid not found in replenisher slots.") end
-	if spatialSlot == nil then error("Spatial fluid not found in replenisher slots.") end
+	return mappingCount
 end
 
 -- OUTPUT BUFFER
@@ -274,7 +316,7 @@ end
 local processing = false
 local bufferChangePending = false
 local awaitingNextCycle = false
-local sawExoticizerActive = false
+local pendingRequests = nil
 local cycleCount = 0
 local totalFluidProduced = 0
 local productionTrackingStarted = nil
@@ -283,11 +325,11 @@ local function isExoticizerIdle()
 	return Hardware.redstone.getInput(activitySide) ~= 0
 end
 
-local function processCycle()
+local function processCycle(requests)
 	if processing or not isExoticizerIdle() then return end
 
 	local cycleStarted = computer.uptime()
-	local requests = readRequests()
+
 	if requests == nil then return end
 
 	processing = true
@@ -301,7 +343,6 @@ local function processCycle()
 	transferMagmatterInputs(requests)
 
 	awaitingNextCycle = true
-	sawExoticizerActive = false
 	processing = false
 	cycleCount = cycleCount + 1
 
@@ -336,7 +377,7 @@ end
 -- STARTUP
 
 local function startup()
-	print("[MAGMATTER] Initialising transposer controller...")
+	print("[MAGMATTER] Initialising components...")
 
 	discoverHardware()
 	verifyHardware()
@@ -347,10 +388,23 @@ local function startup()
 	local fluidCount = discoverFluidSlots()
 	local scanTime = computer.uptime() - scanStarted
 
-	if fluidCount ~= expectedFluidCount then error("Expected " .. expectedFluidCount .. " stocked fluids, found " .. fluidCount) end
+  if verificationExportMode then
+    print("Verification export mode is enabled. Exporting SSR fluid list and exiting script early...")
+    exportFluidList("expected_fluid_list.txt")
+    return
+  end
+
+	if verifyFluidListEnabled then
+		print("[MAGMATTER] Verifying SSR fluid inventory...")
+		verifyFluidList()
+	else
+		print("[MAGMATTER] SSR fluid inventory verification disabled.")
+		if fluidCount ~= expectedFluidCount then
+			error("Expected " .. expectedFluidCount .. " fluids, found " .. fluidCount)
+		end
+	end
 
 	local mappingCount = discoverSourceMappings()
-	verifyLookups()
 
 	Hardware.bufferController.setFluidEventSubscription(true)
 	Hardware.bufferController.setItemEventSubscription(true)
@@ -363,6 +417,7 @@ local function startup()
 	if #fluids + #items == expectedRequestCount then bufferChangePending = true end
 
 	print(string.format("[MAGMATTER] Ready | %d fluids indexed in %.3fs | %d plasma mappings loaded", fluidCount, scanTime, mappingCount))
+  
 	if trackFluidProduction then print(string.format("[MAGMATTER] Production tracking enabled | %.0f L per cycle", fluidProducedPerCycle)) end
 	print("[MAGMATTER] Waiting for Exoticizer output.")
 end
@@ -370,8 +425,6 @@ end
 -- MAIN LOOP
 
 local function main()
-	local lastRedstoneCheck = 0
-
 	while true do
 		local signalName = computer.pullSignal(redstoneCheckInterval)
 
@@ -386,22 +439,22 @@ local function main()
 			end
 		end
 
-		local now = computer.uptime()
-
-		if now - lastRedstoneCheck >= redstoneCheckInterval then
-			lastRedstoneCheck = now
-
-			if awaitingNextCycle and not isExoticizerIdle() then sawExoticizerActive = true end
-
-			if awaitingNextCycle and sawExoticizerActive and isExoticizerIdle() then
-				awaitingNextCycle = false
-				bufferChangePending = true
-			end
+		if bufferChangePending then
+			bufferChangePending = false
+			pendingRequests = readRequests()
 		end
 
-		if bufferChangePending and not awaitingNextCycle and isExoticizerIdle() then processCycle() end
+		if pendingRequests ~= nil and isExoticizerIdle() then
+			local requests = pendingRequests
+			pendingRequests = nil
+			awaitingNextCycle = false
+
+			processCycle(requests)
+		end
 	end
 end
 
 startup()
-main()
+if not verificationExportMode then
+  main()
+end
