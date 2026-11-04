@@ -43,9 +43,9 @@ local verificationExportMode = false -- Used for exporting all SSR fluids to a t
 -- HARDWARE
 
 local Hardware = {
-	bufferController = nil,
-	bufferTransposer = nil,
-	redstone = nil
+  bufferController = nil,
+  bufferTransposer = nil,
+  redstone = nil
 }
 
 -- LOOKUP TABLES
@@ -58,13 +58,13 @@ local spatialSlot = nil
 -- LITRE FORMATTING
 
 local function formatLitres(litres)
-	if litres >= 1000000000 then
-		return string.format("%.3f billion L", litres / 1000000000)
-	elseif litres >= 1000000 then
-		return string.format("%.2f million L", litres / 1000000)
-	else
-		return string.format("%.0f L", litres)
-	end
+  if litres >= 1000000000 then
+    return string.format("%.3f billion L", litres / 1000000000)
+  elseif litres >= 1000000 then
+    return string.format("%.2f million L", litres / 1000000)
+  else
+    return string.format("%.0f L", litres)
+  end
 end
 
 -- PLASMA LIST EXPORT
@@ -84,234 +84,234 @@ end
 -- HARDWARE DISCOVERY AND VERIFICATION
 
 local function discoverHardware()
-	for address in component.list("me_controller") do
-		Hardware.bufferController = component.proxy(address)
-		break
-	end
+  for address in component.list("me_controller") do
+    Hardware.bufferController = component.proxy(address)
+    break
+  end
 
-	for address in component.list("transposer") do
-		if address == plasmaTransposerAddress then
-			Hardware.plasmaTransposer = component.proxy(address)
-		elseif address == bufferTransposerAddress then
-			Hardware.bufferTransposer = component.proxy(address)
-		end
-	end
+  for address in component.list("transposer") do
+    if address == plasmaTransposerAddress then
+      Hardware.plasmaTransposer = component.proxy(address)
+    elseif address == bufferTransposerAddress then
+      Hardware.bufferTransposer = component.proxy(address)
+    end
+  end
 
-	local redstoneCount = 0
-	for address in component.list("redstone") do
-		Hardware.redstone = component.proxy(address)
-		redstoneCount = redstoneCount + 1
-	end
+  local redstoneCount = 0
+  for address in component.list("redstone") do
+    Hardware.redstone = component.proxy(address)
+    redstoneCount = redstoneCount + 1
+  end
 
-	if redstoneCount ~= 1 then error("Expected exactly one redstone component, found " .. redstoneCount) end
+  if redstoneCount ~= 1 then error("Expected exactly one redstone component, found " .. redstoneCount) end
 end
 
 local function verifyFluidList()
-	local filename = "expected_fluid_list.txt"
-	local file, reason = io.open(filename, "r")
+  local filename = "expected_fluid_list.txt"
+  local file, reason = io.open(filename, "r")
 
-	if file == nil then
-		error("Fluid verification is enabled, but the expected fluid list could not be opened: " ..
-			filename .. "\n" .. tostring(reason) ..
-			"\nEnsure you have downloaded the expected fluid list from the GTNH-OC-CatForge GitHub repository.")
-	end
+  if file == nil then
+    error("Fluid verification is enabled, but the expected fluid list could not be opened: " ..
+      filename .. "\n" .. tostring(reason) ..
+      "\nEnsure you have downloaded the expected fluid list from the GTNH-OC-CatForge GitHub repository.")
+  end
 
-	local expectedFluids = {}
-	local missingFluids = {}
-	local unexpectedFluids = {}
-	local expectedCount = 0
+  local expectedFluids = {}
+  local missingFluids = {}
+  local unexpectedFluids = {}
+  local expectedCount = 0
 
-	for fluidLabel in file:lines() do
-		if fluidLabel ~= "" and fluidLabel:sub(1, 1) ~= "#" then
-			if expectedFluids[fluidLabel] then
-				file:close()
-				error("Duplicate fluid entry in " .. filename .. ": " .. fluidLabel)
-			end
+  for fluidLabel in file:lines() do
+    if fluidLabel ~= "" and fluidLabel:sub(1, 1) ~= "#" then
+      if expectedFluids[fluidLabel] then
+        file:close()
+        error("Duplicate fluid entry in " .. filename .. ": " .. fluidLabel)
+      end
 
-			expectedFluids[fluidLabel] = true
-			expectedCount = expectedCount + 1
+      expectedFluids[fluidLabel] = true
+      expectedCount = expectedCount + 1
 
-			if not fluidSlots[fluidLabel] then
-				table.insert(missingFluids, fluidLabel)
-			end
-		end
-	end
+      if not fluidSlots[fluidLabel] then
+        table.insert(missingFluids, fluidLabel)
+      end
+    end
+  end
 
-	file:close()
+  file:close()
 
-	for fluidLabel in pairs(fluidSlots) do
-		if not expectedFluids[fluidLabel] then
-			table.insert(unexpectedFluids, fluidLabel)
-		end
-	end
+  for fluidLabel in pairs(fluidSlots) do
+    if not expectedFluids[fluidLabel] then
+      table.insert(unexpectedFluids, fluidLabel)
+    end
+  end
 
-	if #missingFluids > 0 or #unexpectedFluids > 0 then
-		local message = {"Fluid verification failed!"}
+  if #missingFluids > 0 or #unexpectedFluids > 0 then
+    local message = {"Fluid verification failed!"}
 
-		if #missingFluids > 0 then
-			table.sort(missingFluids)
-			table.insert(message, "\nMissing fluids (" .. #missingFluids .. "):")
-			for _, label in ipairs(missingFluids) do
-				table.insert(message, "  - " .. label)
-			end
-		end
+    if #missingFluids > 0 then
+      table.sort(missingFluids)
+      table.insert(message, "\nMissing fluids (" .. #missingFluids .. "):")
+      for _, label in ipairs(missingFluids) do
+        table.insert(message, "  - " .. label)
+      end
+    end
 
-		if #unexpectedFluids > 0 then
-			table.sort(unexpectedFluids)
-			table.insert(message, "\nUnexpected fluids (" .. #unexpectedFluids .. "):")
-			for _, label in ipairs(unexpectedFluids) do
-				table.insert(message, "  - " .. label)
-			end
-		end
+    if #unexpectedFluids > 0 then
+      table.sort(unexpectedFluids)
+      table.insert(message, "\nUnexpected fluids (" .. #unexpectedFluids .. "):")
+      for _, label in ipairs(unexpectedFluids) do
+        table.insert(message, "  - " .. label)
+      end
+    end
 
-		error(table.concat(message, "\n"))
-	end
+    error(table.concat(message, "\n"))
+  end
 
-	print("Fluid verification successful: " .. expectedCount .. " fluids verified.")
+  print("Fluid verification successful: " .. expectedCount .. " fluids verified.")
 end
 
 local function verifyHardware()
-	if Hardware.bufferController == nil then error("ME controller not found.") end
-	if Hardware.plasmaTransposer == nil then error("Plasma transposer not found: " .. plasmaTransposerAddress) end
-	if Hardware.bufferTransposer == nil then error("Buffer transposer not found: " .. bufferTransposerAddress) end
-	if Hardware.redstone == nil then error("Redstone component not found.") end
-	if plasmaInterfaceSide == nil then error("Missing plasmaInterfaceSide configuration.") end
-	if activitySide == nil then error("Missing activitySide configuration.") end
-	if #replenisherSides == 0 then error("No replenisher sides configured.") end
-	if tachyonFluidIdentifier == spatialFluidIdentifier then error("Tachyon and spatial fluid identifiers cannot be identical.") end
-	if trackFluidProduction and fluidProducedPerCycle <= 0 then error("Set fluidProducedPerCycle before enabling production tracking.") end
-	if Hardware.redstone.getInput(activitySide) == 0 then error("Exoticizer is not idle. Check activitySide configuration.") end
+  if Hardware.bufferController == nil then error("ME controller not found.") end
+  if Hardware.plasmaTransposer == nil then error("Plasma transposer not found: " .. plasmaTransposerAddress) end
+  if Hardware.bufferTransposer == nil then error("Buffer transposer not found: " .. bufferTransposerAddress) end
+  if Hardware.redstone == nil then error("Redstone component not found.") end
+  if plasmaInterfaceSide == nil then error("Missing plasmaInterfaceSide configuration.") end
+  if activitySide == nil then error("Missing activitySide configuration.") end
+  if #replenisherSides == 0 then error("No replenisher sides configured.") end
+  if tachyonFluidIdentifier == spatialFluidIdentifier then error("Tachyon and spatial fluid identifiers cannot be identical.") end
+  if trackFluidProduction and fluidProducedPerCycle <= 0 then error("Set fluidProducedPerCycle before enabling production tracking.") end
+  if Hardware.redstone.getInput(activitySide) == 0 then error("Exoticizer is not idle. Check activitySide configuration.") end
   if productionRateReportInterval < 1 or productionRateReportInterval % 1 ~= 0 then error("productionRateReportInterval must be a positive integer.") end
 end
 
 -- FLUID SLOT DISCOVERY
 
 local function discoverFluidSlots()
-	local found = 0
+  local found = 0
 
-	for _, side in ipairs(replenisherSides) do
-		for slot = 1, slotsPerReplenisher do
-			local fluid = Hardware.plasmaTransposer.getFluidInTank(side, slot)
+  for _, side in ipairs(replenisherSides) do
+    for slot = 1, slotsPerReplenisher do
+      local fluid = Hardware.plasmaTransposer.getFluidInTank(side, slot)
 
-			if fluid and fluid.amount > 0 then
-				local label = fluid.label or fluid.name
-				if label == nil then error("Fluid found in replenisher without a label or name.") end
-				if fluidSlots[label] ~= nil then error("Duplicate fluid found in replenisher: " .. label) end
+      if fluid and fluid.amount > 0 then
+        local label = fluid.label or fluid.name
+        if label == nil then error("Fluid found in replenisher without a label or name.") end
+        if fluidSlots[label] ~= nil then error("Duplicate fluid found in replenisher: " .. label) end
 
-				local source = {side = side, slot = slot - 1}
-				fluidSlots[label] = source
-				found = found + 1
+        local source = {side = side, slot = slot - 1}
+        fluidSlots[label] = source
+        found = found + 1
 
-				if fluid.name == tachyonFluidIdentifier or fluid.label == tachyonFluidIdentifier then
-					if tachyonSlot ~= nil then error("Duplicate tachyon fluid found.") end
-					tachyonSlot = source
-				end
+        if fluid.name == tachyonFluidIdentifier or fluid.label == tachyonFluidIdentifier then
+          if tachyonSlot ~= nil then error("Duplicate tachyon fluid found.") end
+          tachyonSlot = source
+        end
 
-				if fluid.name == spatialFluidIdentifier or fluid.label == spatialFluidIdentifier then
-					if spatialSlot ~= nil then error("Duplicate spatial fluid found.") end
-					spatialSlot = source
-				end
-			end
-		end
-	end
+        if fluid.name == spatialFluidIdentifier or fluid.label == spatialFluidIdentifier then
+          if spatialSlot ~= nil then error("Duplicate spatial fluid found.") end
+          spatialSlot = source
+        end
+      end
+    end
+  end
   
-	return found
+  return found
 end
 
 -- PLASMA MAPPING DISCOVERY
 
 local function discoverSourceMappings()
-	local mappingCount = 0
+  local mappingCount = 0
 
-	for plasmaLabel in pairs(fluidSlots) do
-		local material = plasmaLabel:match("^(.-) Plasma$")
+  for plasmaLabel in pairs(fluidSlots) do
+    local material = plasmaLabel:match("^(.-) Plasma$")
 
-		if material ~= nil then
-			local dustLabel = material .. " Dust"
+    if material ~= nil then
+      local dustLabel = material .. " Dust"
 
-			if sourceToPlasma[dustLabel] ~= nil then
-				error("Duplicate dust mapping found: " .. dustLabel)
-			end
+      if sourceToPlasma[dustLabel] ~= nil then
+        error("Duplicate dust mapping found: " .. dustLabel)
+      end
 
-			sourceToPlasma[dustLabel] = plasmaLabel
-			mappingCount = mappingCount + 1
-		end
-	end
+      sourceToPlasma[dustLabel] = plasmaLabel
+      mappingCount = mappingCount + 1
+    end
+  end
 
-	if mappingCount ~= expectedPlasmaMappingCount then
-		error("Expected " .. expectedPlasmaMappingCount .. " plasma mappings, found " .. mappingCount)
-	end
+  if mappingCount ~= expectedPlasmaMappingCount then
+    error("Expected " .. expectedPlasmaMappingCount .. " plasma mappings, found " .. mappingCount)
+  end
 
-	return mappingCount
+  return mappingCount
 end
 
 -- OUTPUT BUFFER
 
 local function clearBufferSubnet()
-	local success1 = Hardware.bufferTransposer.transferItem(bufferIOSide, bufferIOSide, 1, 7, 1) > 0
-	local success2 = Hardware.bufferTransposer.transferItem(bufferIOSide, bufferIOSide, 1, 8, 2) > 0
-	return success1 and success2
+  local success1 = Hardware.bufferTransposer.transferItem(bufferIOSide, bufferIOSide, 1, 7, 1) > 0
+  local success2 = Hardware.bufferTransposer.transferItem(bufferIOSide, bufferIOSide, 1, 8, 2) > 0
+  return success1 and success2
 end
 
 local function readRequests()
-	local requests = {tachyon = nil, spatial = nil, dust = nil}
-	local fluids = Hardware.bufferController.getFluidsInNetwork()
-	local items = Hardware.bufferController.getItemsInNetwork()
+  local requests = {tachyon = nil, spatial = nil, dust = nil}
+  local fluids = Hardware.bufferController.getFluidsInNetwork()
+  local items = Hardware.bufferController.getItemsInNetwork()
 
-	if #fluids ~= 2 or #items ~= 1 then return nil end
+  if #fluids ~= 2 or #items ~= 1 then return nil end
 
-	for _, fluid in ipairs(fluids) do
-		if fluid.name == tachyonFluidIdentifier or fluid.label == tachyonFluidIdentifier then
-			if requests.tachyon ~= nil then error("Duplicate tachyon fluid in output buffer.") end
-			requests.tachyon = fluid.size
-		elseif fluid.name == spatialFluidIdentifier or fluid.label == spatialFluidIdentifier then
-			if requests.spatial ~= nil then error("Duplicate spatial fluid in output buffer.") end
-			requests.spatial = fluid.size
-		else
-			error("Unexpected fluid in Exoticizer buffer: " .. tostring(fluid.label))
-		end
-	end
+  for _, fluid in ipairs(fluids) do
+    if fluid.name == tachyonFluidIdentifier or fluid.label == tachyonFluidIdentifier then
+      if requests.tachyon ~= nil then error("Duplicate tachyon fluid in output buffer.") end
+      requests.tachyon = fluid.size
+    elseif fluid.name == spatialFluidIdentifier or fluid.label == spatialFluidIdentifier then
+      if requests.spatial ~= nil then error("Duplicate spatial fluid in output buffer.") end
+      requests.spatial = fluid.size
+    else
+      error("Unexpected fluid in Exoticizer buffer: " .. tostring(fluid.label))
+    end
+  end
 
-	requests.dust = items[1].label
+  requests.dust = items[1].label
 
-	if requests.tachyon == nil or requests.spatial == nil then error("Missing tachyon or spatial fluid in output buffer.") end
-	if requests.dust == nil then error("Magmatter dust output has no label.") end
-	if requests.tachyon < 1 or requests.tachyon > 50 then error("Invalid tachyon amount: " .. tostring(requests.tachyon) .. " L") end
-	if requests.spatial < 51 or requests.spatial > 100 then error("Invalid spatial amount: " .. tostring(requests.spatial) .. " L") end
+  if requests.tachyon == nil or requests.spatial == nil then error("Missing tachyon or spatial fluid in output buffer.") end
+  if requests.dust == nil then error("Magmatter dust output has no label.") end
+  if requests.tachyon < 1 or requests.tachyon > 50 then error("Invalid tachyon amount: " .. tostring(requests.tachyon) .. " L") end
+  if requests.spatial < 51 or requests.spatial > 100 then error("Invalid spatial amount: " .. tostring(requests.spatial) .. " L") end
 
-	requests.plasmaUnits = requests.spatial - requests.tachyon
-	requests.plasmaAmount = requests.plasmaUnits * plasmaInsertionAmount
+  requests.plasmaUnits = requests.spatial - requests.tachyon
+  requests.plasmaAmount = requests.plasmaUnits * plasmaInsertionAmount
 
-	if requests.plasmaAmount <= 0 then error("Calculated plasma amount is invalid: " .. tostring(requests.plasmaAmount)) end
+  if requests.plasmaAmount <= 0 then error("Calculated plasma amount is invalid: " .. tostring(requests.plasmaAmount)) end
 
-	return requests
+  return requests
 end
 
 -- FLUID TRANSFER
 
 local function transferFluid(source, amount, label)
-	if source == nil then error("Missing replenisher source for " .. tostring(label)) end
+  if source == nil then error("Missing replenisher source for " .. tostring(label)) end
 
-	local transferred = Hardware.plasmaTransposer.transferFluid(source.side, plasmaInterfaceSide, amount, source.slot)
+  local transferred = Hardware.plasmaTransposer.transferFluid(source.side, plasmaInterfaceSide, amount, source.slot)
 
-	if transferred == false or transferred == nil or transferred == 0 then error("Fluid transfer failed for " .. tostring(label)) end
-	if type(transferred) == "number" and transferred < amount then error("Partial transfer for " .. tostring(label) .. ": " .. transferred .. "/" .. amount .. " L") end
+  if transferred == false or transferred == nil or transferred == 0 then error("Fluid transfer failed for " .. tostring(label)) end
+  if type(transferred) == "number" and transferred < amount then error("Partial transfer for " .. tostring(label) .. ": " .. transferred .. "/" .. amount .. " L") end
 
-	return transferred
+  return transferred
 end
 
 local function transferMagmatterInputs(requests)
-	local plasmaLabel = sourceToPlasma[requests.dust]
-	if plasmaLabel == nil then error("No plasma mapping exists for dust: " .. tostring(requests.dust)) end
+  local plasmaLabel = sourceToPlasma[requests.dust]
+  if plasmaLabel == nil then error("No plasma mapping exists for dust: " .. tostring(requests.dust)) end
 
-	local plasmaSource = fluidSlots[plasmaLabel]
-	if plasmaSource == nil then error("Plasma not found in replenisher lookup: " .. plasmaLabel) end
+  local plasmaSource = fluidSlots[plasmaLabel]
+  if plasmaSource == nil then error("Plasma not found in replenisher lookup: " .. plasmaLabel) end
 
-	transferFluid(tachyonSlot, requests.tachyon, "Tachyon")
-	transferFluid(spatialSlot, requests.spatial, "Spatial")
-	transferFluid(plasmaSource, requests.plasmaAmount, plasmaLabel)
+  transferFluid(tachyonSlot, requests.tachyon, "Tachyon")
+  transferFluid(spatialSlot, requests.spatial, "Spatial")
+  transferFluid(plasmaSource, requests.plasmaAmount, plasmaLabel)
 
-	return plasmaLabel
+  return plasmaLabel
 end
 
 -- CYCLE CONTROL
@@ -325,31 +325,31 @@ local totalFluidProduced = 0
 local productionTrackingStarted = nil
 
 local function isExoticizerIdle()
-	return Hardware.redstone.getInput(activitySide) ~= 0
+  return Hardware.redstone.getInput(activitySide) ~= 0
 end
 
 local function processCycle(requests)
-	if processing or not isExoticizerIdle() then return end
+  if processing or not isExoticizerIdle() then return end
 
-	local cycleStarted = computer.uptime()
+  local cycleStarted = computer.uptime()
 
-	if requests == nil then return end
+  if requests == nil then return end
 
-	processing = true
-	bufferChangePending = false
+  processing = true
+  bufferChangePending = false
 
-	if not clearBufferSubnet() then
-		processing = false
-		error("Failed to clear Exoticizer output buffer.")
-	end
+  if not clearBufferSubnet() then
+    processing = false
+    error("Failed to clear Exoticizer output buffer.")
+  end
 
-	transferMagmatterInputs(requests)
+  transferMagmatterInputs(requests)
 
-	awaitingNextCycle = true
-	processing = false
-	cycleCount = cycleCount + 1
+  awaitingNextCycle = true
+  processing = false
+  cycleCount = cycleCount + 1
 
-	local totalTime = computer.uptime() - cycleStarted
+  local totalTime = computer.uptime() - cycleStarted
 
   if trackFluidProduction then
     totalFluidProduced = totalFluidProduced + fluidProducedPerCycle
@@ -374,22 +374,22 @@ end
 -- EVENT HANDLING
 
 local function isBufferChangeEvent(signalName)
-	return signalName == "network_fluid_changed" or signalName == "network_item_changed"
+  return signalName == "network_fluid_changed" or signalName == "network_item_changed"
 end
 
 -- STARTUP
 
 local function startup()
-	print("[MAGMATTER] Initialising components...")
+  print("[MAGMATTER] Initialising components...")
 
-	discoverHardware()
-	verifyHardware()
+  discoverHardware()
+  verifyHardware()
 
-	print("[MAGMATTER] Hardware verified.")
+  print("[MAGMATTER] Hardware verified.")
 
-	local scanStarted = computer.uptime()
-	local fluidCount = discoverFluidSlots()
-	local scanTime = computer.uptime() - scanStarted
+  local scanStarted = computer.uptime()
+  local fluidCount = discoverFluidSlots()
+  local scanTime = computer.uptime() - scanStarted
 
   if verificationExportMode then
     print("Verification export mode is enabled. Exporting SSR fluid list and exiting script early...")
@@ -397,64 +397,64 @@ local function startup()
     return
   end
 
-	if verifyFluidListEnabled then
-		print("[MAGMATTER] Verifying SSR fluid inventory...")
-		verifyFluidList()
-	else
-		print("[MAGMATTER] SSR fluid inventory verification disabled.")
-		if fluidCount ~= expectedFluidCount then
-			error("Expected " .. expectedFluidCount .. " fluids, found " .. fluidCount)
-		end
-	end
+  if verifyFluidListEnabled then
+    print("[MAGMATTER] Verifying SSR fluid inventory...")
+    verifyFluidList()
+  else
+    print("[MAGMATTER] SSR fluid inventory verification disabled.")
+    if fluidCount ~= expectedFluidCount then
+      error("Expected " .. expectedFluidCount .. " fluids, found " .. fluidCount)
+    end
+  end
 
-	local mappingCount = discoverSourceMappings()
+  local mappingCount = discoverSourceMappings()
 
-	Hardware.bufferController.setFluidEventSubscription(true)
-	Hardware.bufferController.setItemEventSubscription(true)
+  Hardware.bufferController.setFluidEventSubscription(true)
+  Hardware.bufferController.setItemEventSubscription(true)
 
   if trackFluidProduction then productionTrackingStarted = computer.uptime() end
 
-	local fluids = Hardware.bufferController.getFluidsInNetwork()
-	local items = Hardware.bufferController.getItemsInNetwork()
+  local fluids = Hardware.bufferController.getFluidsInNetwork()
+  local items = Hardware.bufferController.getItemsInNetwork()
 
-	if #fluids + #items == expectedRequestCount then bufferChangePending = true end
+  if #fluids + #items == expectedRequestCount then bufferChangePending = true end
 
-	print(string.format("[MAGMATTER] Ready | %d fluids indexed in %.3fs | %d plasma mappings loaded", fluidCount, scanTime, mappingCount))
+  print(string.format("[MAGMATTER] Ready | %d fluids indexed in %.3fs | %d plasma mappings loaded", fluidCount, scanTime, mappingCount))
   
-	if trackFluidProduction then print(string.format("[MAGMATTER] Production tracking enabled | %.0f L per cycle", fluidProducedPerCycle)) end
-	print("[MAGMATTER] Waiting for Exoticizer output.")
+  if trackFluidProduction then print(string.format("[MAGMATTER] Production tracking enabled | %.0f L per cycle", fluidProducedPerCycle)) end
+  print("[MAGMATTER] Waiting for Exoticizer output.")
 end
 
 -- MAIN LOOP
 
 local function main()
-	while true do
-		local signalName = computer.pullSignal(redstoneCheckInterval)
+  while true do
+    local signalName = computer.pullSignal(redstoneCheckInterval)
 
-		if isBufferChangeEvent(signalName) then
-			bufferChangePending = true
-			local deadline = computer.uptime() + eventDebounce
+    if isBufferChangeEvent(signalName) then
+      bufferChangePending = true
+      local deadline = computer.uptime() + eventDebounce
 
-			while computer.uptime() < deadline do
-				local remaining = deadline - computer.uptime()
-				local nextSignal = computer.pullSignal(remaining)
-				if isBufferChangeEvent(nextSignal) then deadline = computer.uptime() + eventDebounce end
-			end
-		end
+      while computer.uptime() < deadline do
+        local remaining = deadline - computer.uptime()
+        local nextSignal = computer.pullSignal(remaining)
+        if isBufferChangeEvent(nextSignal) then deadline = computer.uptime() + eventDebounce end
+      end
+    end
 
-		if bufferChangePending then
-			bufferChangePending = false
-			pendingRequests = readRequests()
-		end
+    if bufferChangePending then
+      bufferChangePending = false
+      pendingRequests = readRequests()
+    end
 
-		if pendingRequests ~= nil and isExoticizerIdle() then
-			local requests = pendingRequests
-			pendingRequests = nil
-			awaitingNextCycle = false
+    if pendingRequests ~= nil and isExoticizerIdle() then
+      local requests = pendingRequests
+      pendingRequests = nil
+      awaitingNextCycle = false
 
-			processCycle(requests)
-		end
-	end
+      processCycle(requests)
+    end
+  end
 end
 
 startup()
